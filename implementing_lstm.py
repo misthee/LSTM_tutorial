@@ -7,7 +7,7 @@
 #
 #
 
-import os
+import os  # 这个模块里面的很多命令和cmd命令行类似
 import re
 import string
 import requests
@@ -18,63 +18,66 @@ import pickle
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.python.framework import ops
+
+# 清除默认图的堆栈,并设置全局图为默认图. 类似于tensorflow版本的rm(list = ls())
 ops.reset_default_graph()
 
-# Start a session
+# 新建一个会话
 sess = tf.Session()
 
-# Set RNN Parameters
-min_word_freq = 5 # Trim the less frequent words off
-rnn_size = 128 # RNN Model size
-embedding_size = 100 # Word embedding size
-epochs = 10 # Number of epochs to cycle through data
-batch_size = 100 # Train on this many examples at once
-learning_rate = 0.001 # Learning rate
+# 设置RNN参数
+min_word_freq = 5 # 出现次数这个值的词将会被忽略
+rnn_size = 128 # 每一个Cell里面包含的神经元的个数
+embedding_size = 100 # 词嵌入的维数
+epochs = 10
+batch_size = 100 
+learning_rate = 0.001
 training_seq_len = 50 # how long of a word group to consider 
 embedding_size = rnn_size
-save_every = 500 # How often to save model checkpoints
+save_every = 500 # 保存模型的频率
 eval_every = 50 # How often to evaluate the test sentences
 prime_texts = ['thou art more', 'to be or not to', 'wherefore art thou']
 
-# Download/store Shakespeare data
+# 数据存储的目录 以及 模型存储的目录 
 data_dir = 'temp'
 data_file = 'shakespeare.txt'
 model_path = 'shakespeare_model'
-full_model_dir = os.path.join(data_dir, model_path)
+full_model_dir = os.path.join(data_dir, model_path)  #path.join 可以做一个更长的目录，此处为"../temp/shakespeare_model"
 
-# Declare punctuation to remove, everything except hyphens and apostrophes
-punctuation = string.punctuation
-punctuation = ''.join([x for x in punctuation if x not in ['-', "'"]])
+# 把除开连字符和撇号以外的所有标点都去掉
+punctuation = string.punctuation  # string.punctuation 可以得到所有的标点
+punctuation = ''.join([x for x in punctuation if x not in ['-', "'"]])  # 用空格链接所有(除了-和')的标点
 
-# Make Model Directory
-if not os.path.exists(full_model_dir):
-    os.makedirs(full_model_dir)
+# 生成模型的目录
+if not os.path.exists(full_model_dir):  # os.path.exists 返回的结果是 bool 型，如果没有就生成一个
+    os.makedirs(full_model_dir) 
 
-# Make data directory
-if not os.path.exists(data_dir):
+# 生成数据的目录
+if not os.path.exists(data_dir):  # 注意是 exists 和 makedirs 都有s
     os.makedirs(data_dir)
 
-print('Loading Shakespeare Data')
-# Check if file is downloaded.
-if not os.path.isfile(os.path.join(data_dir, data_file)):
-    print('Not found, downloading Shakespeare texts from www.gutenberg.org')
-    shakespeare_url = 'http://www.gutenberg.org/cache/epub/100/pg100.txt'
-    # Get Shakespeare text
-    response = requests.get(shakespeare_url)
-    shakespeare_file = response.content
-    # Decode binary into string
+# 开始载入莎士比亚的数据
+print('Loading Shakespeare Data')  
+# 确认文件是否存在
+if not os.path.isfile(os.path.join(data_dir, data_file)):  # isfile 函数, 函数中的变量是包括了文件名的路径
+    print('Not found, downloading Shakespeare texts from www.gutenberg.org')  # 如果没有 就说没有
+    shakespeare_url = 'http://www.gutenberg.org/cache/epub/100/pg100.txt'  # 给出下载链接
+    # 获取莎士比亚的数据
+    response = requests.get(shakespeare_url)  # 用request.get 爬取链接
+    shakespeare_file = response.content  # response.content
+    # 爬取到的为计算机可读的binary文件. 需要解码成utf-8. utf-8编码可以显示简繁中英日韩. 比较通用.
     s_text = shakespeare_file.decode('utf-8')
-    # Drop first few descriptive paragraphs.
+    # 前7675行 非正文 舍弃
     s_text = s_text[7675:]
-    # Remove newlines
+    # 把\r 回车符 \n 换行符 换成 空格
     s_text = s_text.replace('\r\n', '')
     s_text = s_text.replace('\n', '')
     
-    # Write to file
+    # 写入文件 "w"
     with open(os.path.join(data_dir, data_file), 'w') as out_conn:
         out_conn.write(s_text)
 else:
-    # If file has been saved, load from that file
+    # 读取文件 "r"
     with open(os.path.join(data_dir, data_file), 'r') as file_conn:
         s_text = file_conn.read().replace('\n', '')
 
