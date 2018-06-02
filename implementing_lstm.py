@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 #
-# Implementing an LSTM RNN Model
+# 实现LSTM RNN 模型
 #------------------------------
-#  Here we implement an LSTM model on all a data set of Shakespeare works.
+#  在这里我们在莎士比亚的作品集上实现LSTM模型
 #
 #
 #
@@ -81,47 +81,54 @@ else:
     with open(os.path.join(data_dir, data_file), 'r') as file_conn:
         s_text = file_conn.read().replace('\n', '')
 
-# Clean text
+# 开始清理文本
 print('Cleaning Text')
-s_text = re.sub(r'[{}]'.format(punctuation), ' ', s_text)
-s_text = re.sub('\s+', ' ', s_text ).strip().lower()
+s_text = re.sub(r'[{}]'.format(punctuation), ' ', s_text)  # re.sub 利用正则表达式, 把标点换成空格
+s_text = re.sub('\s+', ' ', s_text ).strip().lower()  # 把任意空白字符  \f\n\r\t\v 都替换为空格 
 
-# Build word vocabulary function
+# 定义一个建立词汇表的 函数
 def build_vocab(text, min_word_freq):
-    word_counts = collections.Counter(text.split(' '))
-    # limit word counts to those more frequent than cutoff
-    word_counts = {key:val for key, val in word_counts.items() if val>min_word_freq}
-    # Create vocab --> index mapping
+    # collection.Counter 可以统计词频 由于之前标点都已经换成了空格 直接用空格分开即可 返回结果是一个字典
+    word_counts = collections.Counter(text.split(' '))  
+    # 做成一个字典 索引是词 key是词 val是频次 加入最低频次限制
+    word_counts = {key:val for key, val in word_counts.items() if val>min_word_freq} 
+    # 把key提取成list
     words = word_counts.keys()
+    # enumerate 方法可以提取list中的index key是索引 val是list元素 重新做一个字典 索引从1开始 所以此处key是词 val是index
     vocab_to_ix_dict = {key:(ix+1) for ix, key in enumerate(words)}
-    # Add unknown key --> 0 index
+    # 索引为0的未登录词
     vocab_to_ix_dict['unknown']=0
-    # Create index --> vocab mapping
+    # 将上面的dict的key val互换 key是index val是词
     ix_to_vocab_dict = {val:key for key,val in vocab_to_ix_dict.items()}
     
     return(ix_to_vocab_dict, vocab_to_ix_dict)
 
-# Build Shakespeare vocabulary
+# 建立莎士比亚词汇表
 print('Building Shakespeare Vocab')
+# 用上文的函数获得两个词典
 ix2vocab, vocab2ix = build_vocab(s_text, min_word_freq)
+# 字典长度 ? 为什么 +1
 vocab_size = len(ix2vocab) + 1
 print('Vocabulary Length = {}'.format(vocab_size))
-# Sanity Check
+# 合理性检查
+# assert 如果后面的语句为False 会报错 Assertation Error
 assert(len(ix2vocab) == len(vocab2ix))
 
-# Convert text to word vectors
+# 制作one-hot词向量
 s_text_words = s_text.split(' ')
+# 先做成一个空的list
 s_text_ix = []
 for ix, x in enumerate(s_text_words):
+    # try except 句式 首先尝试 其次尝试
     try:
-        s_text_ix.append(vocab2ix[x])
+        s_text_ix.append(vocab2ix[x])  # 添加上面的词对应的索引
     except:
-        s_text_ix.append(0)
-s_text_ix = np.array(s_text_ix)
+        s_text_ix.append(0)  # 如果词没有索引, 就添加0, 即记为未登录词
+s_text_ix = np.array(s_text_ix)  # 将list变换成ndarray
 
 
 
-# Define LSTM RNN Model
+# 定义LSTM 模型
 class LSTM_Model():
     def __init__(self, embedding_size, rnn_size, batch_size, learning_rate,
                  training_seq_len, vocab_size, infer_sample=False):
@@ -138,9 +145,12 @@ class LSTM_Model():
             self.batch_size = batch_size
             self.training_seq_len = training_seq_len
         
+        # 定义LSTM细胞 参数是rnn_size
         self.lstm_cell = tf.contrib.rnn.BasicLSTMCell(self.rnn_size)
+        # 定义初始状态
         self.initial_state = self.lstm_cell.zero_state(self.batch_size, tf.float32)
         
+        # 定义x
         self.x_data = tf.placeholder(tf.int32, [self.batch_size, self.training_seq_len])
         self.y_output = tf.placeholder(tf.int32, [self.batch_size, self.training_seq_len])
         
