@@ -114,7 +114,7 @@ print('Vocabulary Length = {}'.format(vocab_size))
 # assert 如果后面的语句为False 会报错 Assertation Error
 assert(len(ix2vocab) == len(vocab2ix))
 
-# 制作one-hot词向量
+# 把文本中的每个词汇换成它在词典中的索引
 s_text_words = s_text.split(' ')
 # 先做成一个空的list
 s_text_ix = []
@@ -130,6 +130,7 @@ s_text_ix = np.array(s_text_ix)  # 将list变换成ndarray
 
 # 定义LSTM 模型
 class LSTM_Model():
+    # 定义init方法
     def __init__(self, embedding_size, rnn_size, batch_size, learning_rate,
                  training_seq_len, vocab_size, infer_sample=False):
         self.embedding_size = embedding_size
@@ -150,31 +151,36 @@ class LSTM_Model():
         # 定义初始状态
         self.initial_state = self.lstm_cell.zero_state(self.batch_size, tf.float32)
         
-        # 定义x
+        # 定义x和y的占位符
         self.x_data = tf.placeholder(tf.int32, [self.batch_size, self.training_seq_len])
         self.y_output = tf.placeholder(tf.int32, [self.batch_size, self.training_seq_len])
         
+        # 定义变量
         with tf.variable_scope('lstm_vars'):
-            # Softmax Output Weights
+            # 为Softmax输出设置变量，列数是词汇表的大小
             W = tf.get_variable('W', [self.rnn_size, self.vocab_size], tf.float32, tf.random_normal_initializer())
+            # b的维度是词汇表的大小
             b = tf.get_variable('b', [self.vocab_size], tf.float32, tf.constant_initializer(0.0))
         
-            # Define Embedding
+            # 设置词嵌入
             embedding_mat = tf.get_variable('embedding_mat', [self.vocab_size, self.embedding_size],
                                             tf.float32, tf.random_normal_initializer())
-                                            
+            
+            # tf.nn.embedding_lookup函数的用法主要是选取一个张量里面索引对应的元素。tf.nn.embedding_lookup（tensor, id）
             embedding_output = tf.nn.embedding_lookup(embedding_mat, self.x_data)
+            # tf.split(dimension, num_split, input)：dimension的意思就是输入张量的哪一个维度，如果是0就表示对第0维度进行切割。num_split就是切割的数量，如果是2就表示输入张量被切成2份，每一份是一个列表。
             rnn_inputs = tf.split(axis=1, num_or_size_splits=self.training_seq_len, value=embedding_output)
+            # tf.squeeze 去掉维数为1的维度
             rnn_inputs_trimmed = [tf.squeeze(x, [1]) for x in rnn_inputs]
         
-        # If we are inferring (generating text), we add a 'loop' function
-        # Define how to get the i+1 th input from the i th output
+        # 如果我们要推断(生成文本),  我们设置一个loop函数
+        # 确定怎么样从第i次的输入产生i+1次的输入
         def inferred_loop(prev, count):
-            # Apply hidden layer
+            # 前一层的输出和W矩阵相乘, 再加上b
             prev_transformed = tf.matmul(prev, W) + b
-            # Get the index of the output (also don't run the gradient)
+            # argmax沿着一号轴线也就是列方向找最大值, stop_gradient可以不求某个参数的倒数
             prev_symbol = tf.stop_gradient(tf.argmax(prev_transformed, 1))
-            # Get embedded vector
+            # 获得嵌入向量
             output = tf.nn.embedding_lookup(embedding_mat, prev_symbol)
             return(output)
         
@@ -185,20 +191,22 @@ class LSTM_Model():
                                       loop_function=inferred_loop if infer_sample else None)
         # Non inferred outputs
         output = tf.reshape(tf.concat(axis=1, values=outputs), [-1, self.rnn_size])
-        # Logits and output
+        # 得到RNN
         self.logit_output = tf.matmul(output, W) + b
         self.model_output = tf.nn.softmax(self.logit_output)
         
+        # 这个损失函数相当于是在序列上运用cross_entropy
         loss_fun = tf.contrib.legacy_seq2seq.sequence_loss_by_example
-        loss = loss_fun([self.logit_output],[tf.reshape(self.y_output, [-1])],
-                [tf.ones([self.batch_size * self.training_seq_len])])
+        loss = loss_fun([self.logit_output],[tf.reshape(self.y_output, [-1])],[tf.ones([self.batch_size * self.training_seq_len])])
         self.cost = tf.reduce_sum(loss) / (self.batch_size * self.training_seq_len)
         self.final_state = last_state
+        # 为了防止梯度爆炸或者梯度消失, 对全局梯度进行限制
         gradients, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tf.trainable_variables()), 4.5)
         optimizer = tf.train.AdamOptimizer(self.learning_rate)
         self.train_op = optimizer.apply_gradients(zip(gradients, tf.trainable_variables()))
         
     def sample(self, sess, words=ix2vocab, vocab=vocab2ix, num=10, prime_text='thou art'):
+        # initial_state = LSTMStateTuple(c_state, h_state) state
         state = sess.run(self.lstm_cell.zero_state(1, tf.float32))
         word_list = prime_text.split()
         for word in word_list[:-1]:
