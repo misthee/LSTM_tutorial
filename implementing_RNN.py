@@ -61,23 +61,24 @@ else:
     with open(os.path.join(data_dir, data_file), 'r') as file_conn:
         for row in file_conn:
             text_data.append(row)
-    text_data = text_data[:-1] # 切片到倒数第一个, 且不包含倒数第一个
+    text_data = text_data[:-1] # 切片到倒数第一个, 且不包含倒数第一个, 最后一个是标签
 
+# 用制表符分开
 text_data = [x.split('\t') for x in text_data if len(x)>=1]
 [text_data_target, text_data_train] = [list(x) for x in zip(*text_data)]
 
 
-# Create a text cleaning function
+# 定义一个清洗数据的函数 去掉数字 下划线 和不可见符号 全部小写
 def clean_text(text_string):
     text_string = re.sub(r'([^\s\w]|_|[0-9])+', '', text_string)
     text_string = " ".join(text_string.split())
     text_string = text_string.lower()
     return(text_string)
 
-# Clean texts
+# 清洗数据
 text_data_train = [clean_text(x) for x in text_data_train]
 
-# Change texts into numeric vectors
+# 把文本转化成数值型的向量
 vocab_processor = tf.contrib.learn.preprocessing.VocabularyProcessor(max_sequence_length,
                                                                      min_frequency=min_word_frequency)
 text_processed = np.array(list(vocab_processor.fit_transform(text_data_train)))
@@ -97,7 +98,7 @@ vocab_size = len(vocab_processor.vocabulary_)
 print("Vocabulary Size: {:d}".format(vocab_size))
 print("80-20 Train Test split: {:d} -- {:d}".format(len(y_train), len(y_test)))
 
-# Create placeholders
+# 创建占位符
 x_data = tf.placeholder(tf.int32, [None, max_sequence_length])
 y_output = tf.placeholder(tf.int32, [None])
 
