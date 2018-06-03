@@ -78,37 +78,38 @@ def clean_text(text_string):
 # 清洗数据
 text_data_train = [clean_text(x) for x in text_data_train]
 
-# 把文本转化成数值型的向量
+# 把文本转化成数值型的向量 词汇表模型
+# 首先定义processor 然后fit_transform数据 最后用np.array转换类型
 vocab_processor = tf.contrib.learn.preprocessing.VocabularyProcessor(max_sequence_length,
                                                                      min_frequency=min_word_frequency)
 text_processed = np.array(list(vocab_processor.fit_transform(text_data_train)))
 
-# Shuffle and split data
+# 随机打乱 并且分割数据
 text_processed = np.array(text_processed)
-text_data_target = np.array([1 if x=='ham' else 0 for x in text_data_target])
-shuffled_ix = np.random.permutation(np.arange(len(text_data_target)))
-x_shuffled = text_processed[shuffled_ix]
-y_shuffled = text_data_target[shuffled_ix]
+text_data_target = np.array([1 if x=='ham' else 0 for x in text_data_target])  # 制作标签
+shuffled_ix = np.random.permutation(np.arange(len(text_data_target)))  # 制作一个长度相同但顺序打乱的表
+x_shuffled = text_processed[shuffled_ix]  # 利用打乱的表制作训练集x
+y_shuffled = text_data_target[shuffled_ix]  # 利用打乱的表制作训练集y
 
-# Split train/test set
-ix_cutoff = int(len(y_shuffled)*0.80)
+# 划分训练集和测试集
+ix_cutoff = int(len(y_shuffled)*0.80)  # 确定划分点
 x_train, x_test = x_shuffled[:ix_cutoff], x_shuffled[ix_cutoff:]
 y_train, y_test = y_shuffled[:ix_cutoff], y_shuffled[ix_cutoff:]
 vocab_size = len(vocab_processor.vocabulary_)
 print("Vocabulary Size: {:d}".format(vocab_size))
 print("80-20 Train Test split: {:d} -- {:d}".format(len(y_train), len(y_test)))
 
-# 创建占位符
+# 创建占位符 x是batch_size * 序列长度 y是batch_size
 x_data = tf.placeholder(tf.int32, [None, max_sequence_length])
 y_output = tf.placeholder(tf.int32, [None])
 
-# Create embedding
-embedding_mat = tf.Variable(tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0))
+# 创建嵌入矩阵
+embedding_mat = tf.Variable(tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0))  # 参数分别是最小值和最大值
 embedding_output = tf.nn.embedding_lookup(embedding_mat, x_data)
 #embedding_output_expanded = tf.expand_dims(embedding_output, -1)
 
-# Define the RNN cell
-#tensorflow change >= 1.0, rnn is put into tensorflow.contrib directory. Prior version not test.
+# 定义RNN细胞
+# 大于1.0版本的tensorflow已经把RNN放在tensorflow.contrib里面了, 小于的版本在tf.nn
 if tf.__version__[0]>='1':
     cell=tf.contrib.rnn.BasicRNNCell(num_units = rnn_size)
 else:
@@ -117,19 +118,21 @@ else:
 output, state = tf.nn.dynamic_rnn(cell, embedding_output, dtype=tf.float32)
 output = tf.nn.dropout(output, dropout_keep_prob)
 
-# Get output of RNN sequence
-output = tf.transpose(output, [1, 0, 2])
-last = tf.gather(output, int(output.get_shape()[0]) - 1)
+# 获得RNN序列的输出
+output = tf.transpose(output, [1, 0, 2])  # 把第一维度batch_size和第二维度time_step互换
+# 定义一个last
+last = tf.gather(output, int(output.get_shape()[0]) - 1)  # tf.gather 可以对张量进行切片 get_shape()对象是tensor, 返回是tuple
 
-
+# 设置权重
 weight = tf.Variable(tf.truncated_normal([rnn_size, 2], stddev=0.1))
 bias = tf.Variable(tf.constant(0.1, shape=[2]))
 logits_out = tf.matmul(last, weight) + bias
 
-# Loss function
+# 损失函数
 losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits_out, labels=y_output) # logits=float32, labels=int32
 loss = tf.reduce_mean(losses)
 
+# 计算准确率
 accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(logits_out, 1), tf.cast(y_output, tf.int64)), tf.float32))
 
 optimizer = tf.train.RMSPropOptimizer(learning_rate)
@@ -154,29 +157,29 @@ for epoch in range(epochs):
     num_batches = int(len(x_train)/batch_size) + 1   # 注意这里取整后+1 数据会有多
     # 生成minibatch
     for i in range(num_batches):
-        # Select train data
+        # 选择训练数据
         min_ix = i * batch_size
         max_ix = np.min([len(x_train), ((i+1) * batch_size)])  # 最后一个minibatch上限取len() 
         x_train_batch = x_train[min_ix:max_ix]
         y_train_batch = y_train[min_ix:max_ix]
         
-        # Run train step
+        # sess.run 注意dropoutkeepprob是放在train_dict里面的
         train_dict = {x_data: x_train_batch, y_output: y_train_batch, dropout_keep_prob:0.5}
         sess.run(train_step, feed_dict=train_dict)
         
-    # Run loss and accuracy for training
+    # 在运行时获得损失和准确率
     temp_train_loss, temp_train_acc = sess.run([loss, accuracy], feed_dict=train_dict)
     train_loss.append(temp_train_loss)
     train_accuracy.append(temp_train_acc)
     
-    # Run Eval Step
+    # test dict里面dopout比例是1
     test_dict = {x_data: x_test, y_output: y_test, dropout_keep_prob:1.0}
     temp_test_loss, temp_test_acc = sess.run([loss, accuracy], feed_dict=test_dict)
     test_loss.append(temp_test_loss)
     test_accuracy.append(temp_test_acc)
     print('Epoch: {}, Test Loss: {:.2}, Test Acc: {:.2}'.format(epoch+1, temp_test_loss, temp_test_acc))
     
-# Plot loss over time
+# 画两张图分别是train loss和test loss
 epoch_seq = np.arange(1, epochs+1)
 plt.plot(epoch_seq, train_loss, 'k--', label='Train Set')
 plt.plot(epoch_seq, test_loss, 'r-', label='Test Set')
@@ -186,7 +189,7 @@ plt.ylabel('Softmax Loss')
 plt.legend(loc='upper left')
 plt.show()
 
-# Plot accuracy over time
+# 画两张图分别是train accuracy和test accuracy
 plt.plot(epoch_seq, train_accuracy, 'k--', label='Train Set')
 plt.plot(epoch_seq, test_accuracy, 'r-', label='Test Set')
 plt.title('Test Accuracy')
