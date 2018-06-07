@@ -15,7 +15,7 @@ import tensorflow as tf
 from zipfile import ZipFile  # 读取zip文件
 from tensorflow.python.framework import ops
 
-
+# 初始化默认图
 ops.reset_default_graph()
 
 # 启动一个会话
@@ -41,22 +41,28 @@ data_file = 'text_data.txt'
 if not os.path.exists(data_dir):
     os.makedirs(data_dir)
 
+# 如果目标文件不存在
 if not os.path.isfile(os.path.join(data_dir, data_file)):
+    # 给出爬取路径
     zip_url = 'http://archive.ics.uci.edu/ml/machine-learning-databases/00228/smsspamcollection.zip'
-    r = requests.get(zip_url)    # 通过爬虫爬取url链接
+    # 通过爬虫爬取url链接, 可以看到目标文件是.zip文件
+    r = requests.get(zip_url)    
+    # 用io读取爬取到的内容, zipfile默认是读取
     z = ZipFile(io.BytesIO(r.content))
+    # 定义read文件为file
     file = z.read('SMSSpamCollection')
     # 格式化数据
     text_data = file.decode()  # 先解码
     text_data = text_data.encode('ascii',errors='ignore')  # 然后编码成ASCII
     text_data = text_data.decode().split('\n')  # 解码并且用换行符分割
 
-    # 写入数据
+    # 将爬取到并且格式化的数据写入, 并且用换行符隔开
     with open(os.path.join(data_dir, data_file), 'w') as file_conn:
         for text in text_data:
             file_conn.write("{}\n".format(text))
+# 如果存在
 else:
-    # 读取数据
+    # 读取数据, 先定义一个空的列表
     text_data = []
     with open(os.path.join(data_dir, data_file), 'r') as file_conn:
         for row in file_conn:
@@ -65,6 +71,7 @@ else:
 
 # 用制表符分开
 text_data = [x.split('\t') for x in text_data if len(x)>=1]
+# zip是压缩, zip(*)是解压缩 怎样理解这一句?
 [text_data_target, text_data_train] = [list(x) for x in zip(*text_data)]
 
 
@@ -75,17 +82,19 @@ def clean_text(text_string):
     text_string = text_string.lower()
     return(text_string)
 
-# 清洗数据
+# 清洗训练数据
 text_data_train = [clean_text(x) for x in text_data_train]
 
-# 把文本转化成数值型的向量 词汇表模型
+# 把文本转化成数值型的向量 词汇表模型 低于最小词频的词不会被收录到词汇表中
 # 首先定义processor 然后fit_transform数据 最后用np.array转换类型
 vocab_processor = tf.contrib.learn.preprocessing.VocabularyProcessor(max_sequence_length,
                                                                      min_frequency=min_word_frequency)
 text_processed = np.array(list(vocab_processor.fit_transform(text_data_train)))
 
 # 随机打乱 并且分割数据
+# 先把训练数据变成ndarray
 text_processed = np.array(text_processed)
+# 把标签转化成数值型, 非垃圾邮件是1, 其余情况是0
 text_data_target = np.array([1 if x=='ham' else 0 for x in text_data_target])  # 制作标签
 shuffled_ix = np.random.permutation(np.arange(len(text_data_target)))  # 制作一个长度相同但顺序打乱的表
 x_shuffled = text_processed[shuffled_ix]  # 利用打乱的表制作训练集x
@@ -93,8 +102,10 @@ y_shuffled = text_data_target[shuffled_ix]  # 利用打乱的表制作训练集y
 
 # 划分训练集和测试集
 ix_cutoff = int(len(y_shuffled)*0.80)  # 确定划分点
+# 按照划分点分割训练集和验证集
 x_train, x_test = x_shuffled[:ix_cutoff], x_shuffled[ix_cutoff:]
 y_train, y_test = y_shuffled[:ix_cutoff], y_shuffled[ix_cutoff:]
+# 词汇表容量
 vocab_size = len(vocab_processor.vocabulary_)
 print("Vocabulary Size: {:d}".format(vocab_size))
 print("80-20 Train Test split: {:d} -- {:d}".format(len(y_train), len(y_test)))
@@ -103,10 +114,11 @@ print("80-20 Train Test split: {:d} -- {:d}".format(len(y_train), len(y_test)))
 x_data = tf.placeholder(tf.int32, [None, max_sequence_length])
 y_output = tf.placeholder(tf.int32, [None])
 
-# 创建嵌入矩阵
+# 创建嵌入矩阵, 首先是初始化, 由于这是Variable, 在训练过程中会不断优化
 embedding_mat = tf.Variable(tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0))  # 参数分别是最小值和最大值
+# 把输入的文件转化成词嵌入的形式
 embedding_output = tf.nn.embedding_lookup(embedding_mat, x_data)
-#embedding_output_expanded = tf.expand_dims(embedding_output, -1)
+#embedding_output_expanded = tf.expand_dims(embedding_output, -1)  #可以给output增加一个维度 -1表示最后一个维度
 
 # 定义RNN细胞
 # 大于1.0版本的tensorflow已经把RNN放在tensorflow.contrib里面了, 小于的版本在tf.nn
@@ -115,29 +127,35 @@ if tf.__version__[0]>='1':
 else:
     cell = tf.nn.rnn_cell.BasicRNNCell(num_units = rnn_size)
 
+# rnn_cell 会输出两个, 一个是状态一个没有经过softmax的输出, embedding_output作为输入
 output, state = tf.nn.dynamic_rnn(cell, embedding_output, dtype=tf.float32)
+# 随机丢弃的比例, 比例之前已经设置为一个placeholder
 output = tf.nn.dropout(output, dropout_keep_prob)
 
 # 获得RNN序列的输出
 output = tf.transpose(output, [1, 0, 2])  # 把第一维度batch_size和第二维度time_step互换
-# 定义一个last
+# 定义一个last, 选择的是output转化维度后的第一个维度, 也就是time_step的最后一个
 last = tf.gather(output, int(output.get_shape()[0]) - 1)  # tf.gather 可以对张量进行切片 get_shape()对象是tensor, 返回是tuple
 
-# 设置权重
+# 设置权重, 这里的2是分成两类的意思
 weight = tf.Variable(tf.truncated_normal([rnn_size, 2], stddev=0.1))
 bias = tf.Variable(tf.constant(0.1, shape=[2]))
+# 计算最后的输出
 logits_out = tf.matmul(last, weight) + bias
 
-# 损失函数
+# 损失函数, 注意这里的sparse版本和softmax是一样的, 区别在于这里的label是一个整数, softmax那里是一个one_hot的向量
 losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits_out, labels=y_output) # logits=float32, labels=int32
+# 计算平均的损失
 loss = tf.reduce_mean(losses)
 
 # 计算准确率
 accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.argmax(logits_out, 1), tf.cast(y_output, tf.int64)), tf.float32))
 
+# 定义优化器和训练步
 optimizer = tf.train.RMSPropOptimizer(learning_rate)
 train_step = optimizer.minimize(loss)
 
+# 开始训练
 init = tf.global_variables_initializer()
 sess.run(init)
 
