@@ -220,7 +220,9 @@ class LSTM_Model():
         # word list是初始语句分割的结果
         word_list = prime_text.split()
         for word in word_list[:-1]:
+            # 初始化x
             x = np.zeros((1, 1))
+            # 用word替换x中的元素
             x[0, 0] = vocab[word]
             feed_dict = {self.x_data: x, self.initial_state:state}
             [state] = sess.run([self.final_state], feed_dict=feed_dict)
@@ -244,7 +246,7 @@ class LSTM_Model():
 lstm_model = LSTM_Model(embedding_size, rnn_size, batch_size, learning_rate,
                         training_seq_len, vocab_size)
 
-# 重新使用之前的variable scope, 也就是变量的集合
+# 重新使用之前的variable scope, 也就是变量的集合, 用于测试
 with tf.variable_scope(tf.get_variable_scope(), reuse=True):
     test_lstm_model = LSTM_Model(embedding_size, rnn_size, batch_size, learning_rate,
                                  training_seq_len, vocab_size, infer_sample=True)
@@ -257,27 +259,30 @@ saver = tf.train.Saver(tf.global_variables())
 num_batches = int(len(s_text_ix)/(batch_size * training_seq_len)) + 1
 # 按照batch的数量分割
 batches = np.array_split(s_text_ix, num_batches)
-# 把
+# 一维变成两维, 按照长度和batch_size来划分
 batches = [np.resize(x, [batch_size, training_seq_len]) for x in batches]
 
-# Initialize all variables
+# 初始化所有变量
 init = tf.global_variables_initializer()
 sess.run(init)
 
-# Train model
+# 训练模型
 train_loss = []
 iteration_count = 1
 for epoch in range(epochs):
-    # Shuffle word indices
+    # 随机打乱batch的索引
     random.shuffle(batches)
-    # Create targets from shuffled batches
+    # np.roll 把x沿着1轴线滚动-1长度 因为我们在第i个位置要训练的target实际上就是i+1个词
     targets = [np.roll(x, -1, axis=1) for x in batches]
-    # Run a through one epoch
+    # 训练一个epoch
     print('Starting Epoch #{} of {}.'.format(epoch+1, epochs))
-    # Reset initial LSTM state every epoch
+    # 每个epoch之前都重置lstm的初始状态
     state = sess.run(lstm_model.initial_state)
+    
     for ix, batch in enumerate(batches):
+        # 定义训练用的数据词典
         training_dict = {lstm_model.x_data: batch, lstm_model.y_output: targets[ix]}
+        # 定义两个state
         c, h = lstm_model.initial_state
         training_dict[c] = state.c
         training_dict[h] = state.h
@@ -286,22 +291,24 @@ for epoch in range(epochs):
                                        feed_dict=training_dict)
         train_loss.append(temp_loss)
         
-        # Print status every 10 gens
+        # 每10次生成打印一次
         if iteration_count % 10 == 0:
             summary_nums = (iteration_count, epoch+1, ix+1, num_batches+1, temp_loss)
             print('Iteration: {}, Epoch: {}, Batch: {} out of {}, Loss: {:.2f}'.format(*summary_nums))
         
-        # Save the model and the vocab
+        # 保存模型
         if iteration_count % save_every == 0:
-            # Save model
+            # 在目标路径下保存为文件名model
             model_file_name = os.path.join(full_model_dir, 'model')
+            # 保存sess
             saver.save(sess, model_file_name, global_step = iteration_count)
             print('Model Saved To: {}'.format(model_file_name))
-            # Save vocabulary
+            # 把词汇到索引 索引到词典都保存起来
             dictionary_file = os.path.join(full_model_dir, 'vocab.pkl')
             with open(dictionary_file, 'wb') as dict_file_conn:
                 pickle.dump([vocab2ix, ix2vocab], dict_file_conn)
         
+        # 测试
         if iteration_count % eval_every == 0:
             for sample in prime_texts:
                 print(test_lstm_model.sample(sess, ix2vocab, vocab2ix, num=10, prime_text=sample))
@@ -309,7 +316,7 @@ for epoch in range(epochs):
         iteration_count += 1
 
 
-# Plot loss over time
+# 画图
 plt.plot(train_loss, 'k-')
 plt.title('Sequence to Sequence Loss')
 plt.xlabel('Generation')
