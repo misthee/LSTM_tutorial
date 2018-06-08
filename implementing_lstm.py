@@ -7,14 +7,14 @@
 #
 #
 
-import os  # 这个模块里面的很多命令和cmd命令行类似
-import re
+import os  # os模块主要用来连接路径, 许多命令类似命令行命令
+import re  # 正则表达式模块
 import string
-import requests
+import requests  # 爬虫模块
 import numpy as np
-import collections
+import collections  # 统计词频模块
 import random
-import pickle
+import pickle  
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from tensorflow.python.framework import ops
@@ -32,16 +32,17 @@ embedding_size = 100 # 词嵌入的维数
 epochs = 10
 batch_size = 100 
 learning_rate = 0.001
-training_seq_len = 50 # how long of a word group to consider 
+training_seq_len = 50 # 训练的句子的长度
 embedding_size = rnn_size
-save_every = 500 # 保存模型的频率
-eval_every = 50 # How often to evaluate the test sentences
+save_every = 500 # 保存模型到ckpt的频率
+eval_every = 50 # 评价测试数据的频率 sess.run用来训练 eval用来测试和验证
 prime_texts = ['thou art more', 'to be or not to', 'wherefore art thou']
 
 # 数据存储的目录 以及 模型存储的目录 
 data_dir = 'temp'
 data_file = 'shakespeare.txt'
 model_path = 'shakespeare_model'
+# 模型的目录是放在数据的目录之下
 full_model_dir = os.path.join(data_dir, model_path)  #path.join 可以做一个更长的目录，此处为"../temp/shakespeare_model"
 
 # 把除开连字符和撇号以外的所有标点都去掉
@@ -67,15 +68,16 @@ if not os.path.isfile(os.path.join(data_dir, data_file)):  # isfile 函数, 函�
     shakespeare_file = response.content  # response.content
     # 爬取到的为计算机可读的binary文件. 需要解码成utf-8. utf-8编码可以显示简繁中英日韩. 比较通用.
     s_text = shakespeare_file.decode('utf-8')
-    # 前7675行 非正文 舍弃
+    # 前7675个词 非正文 舍弃
     s_text = s_text[7675:]
     # 把\r 回车符 \n 换行符 换成 空格
     s_text = s_text.replace('\r\n', '')
     s_text = s_text.replace('\n', '')
     
-    # 写入文件 "w"
+    # 把s_text 写成文件 shakespear.txt
     with open(os.path.join(data_dir, data_file), 'w') as out_conn:
         out_conn.write(s_text)
+# 如果存在
 else:
     # 读取文件 "r"
     with open(os.path.join(data_dir, data_file), 'r') as file_conn:
