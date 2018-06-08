@@ -36,6 +36,7 @@ training_seq_len = 50 # 训练的句子的长度
 embedding_size = rnn_size
 save_every = 500 # 保存模型到ckpt的频率
 eval_every = 50 # 评价测试数据的频率 sess.run用来训练 eval用来测试和验证
+# 定义文本生成的起始句
 prime_texts = ['thou art more', 'to be or not to', 'wherefore art thou']
 
 # 数据存储的目录 以及 模型存储的目录 
@@ -157,14 +158,14 @@ class LSTM_Model():
         self.x_data = tf.placeholder(tf.int32, [self.batch_size, self.training_seq_len])
         self.y_output = tf.placeholder(tf.int32, [self.batch_size, self.training_seq_len])
         
-        # 定义变量
+        # 定义变量, scope相当于定义一个文件夹上级目录, 方便参数共享
         with tf.variable_scope('lstm_vars'):
             # 为Softmax输出设置变量，列数是词汇表的大小
             W = tf.get_variable('W', [self.rnn_size, self.vocab_size], tf.float32, tf.random_normal_initializer())
             # b的维度是词汇表的大小
             b = tf.get_variable('b', [self.vocab_size], tf.float32, tf.constant_initializer(0.0))
         
-            # 设置词嵌入
+            # 设置词嵌入, 注意是variable
             embedding_mat = tf.get_variable('embedding_mat', [self.vocab_size, self.embedding_size],
                                             tf.float32, tf.random_normal_initializer())
             
@@ -182,16 +183,17 @@ class LSTM_Model():
             prev_transformed = tf.matmul(prev, W) + b
             # argmax沿着一号轴线也就是列方向找最大值, stop_gradient可以不求某个参数的倒数
             prev_symbol = tf.stop_gradient(tf.argmax(prev_transformed, 1))
-            # 获得嵌入向量
+            # 得到嵌入的向量
             output = tf.nn.embedding_lookup(embedding_mat, prev_symbol)
             return(output)
         
         decoder = tf.contrib.legacy_seq2seq.rnn_decoder
+        # 得到推断的文本
         outputs, last_state = decoder(rnn_inputs_trimmed,
                                       self.initial_state,
                                       self.lstm_cell,
                                       loop_function=inferred_loop if infer_sample else None)
-        # Non inferred outputs
+        # 把结果拼接起来, axis = 1 是横向的
         output = tf.reshape(tf.concat(axis=1, values=outputs), [-1, self.rnn_size])
         # 得到RNN
         self.logit_output = tf.matmul(output, W) + b
@@ -199,17 +201,23 @@ class LSTM_Model():
         
         # 这个损失函数相当于是在序列上运用cross_entropy
         loss_fun = tf.contrib.legacy_seq2seq.sequence_loss_by_example
+        # tf.ones 是全1
         loss = loss_fun([self.logit_output],[tf.reshape(self.y_output, [-1])],[tf.ones([self.batch_size * self.training_seq_len])])
         self.cost = tf.reduce_sum(loss) / (self.batch_size * self.training_seq_len)
         self.final_state = last_state
         # 为了防止梯度爆炸或者梯度消失, 对全局梯度进行限制
         gradients, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tf.trainable_variables()), 4.5)
         optimizer = tf.train.AdamOptimizer(self.learning_rate)
+        # 把梯度应用到变量上去
         self.train_op = optimizer.apply_gradients(zip(gradients, tf.trainable_variables()))
         
+    
+    # 定义一个初始采样的函数
     def sample(self, sess, words=ix2vocab, vocab=vocab2ix, num=10, prime_text='thou art'):
         # initial_state = LSTMStateTuple(c_state, h_state) state
+        # 定义初始0状态
         state = sess.run(self.lstm_cell.zero_state(1, tf.float32))
+        # word list是初始语句分割的结果
         word_list = prime_text.split()
         for word in word_list[:-1]:
             x = np.zeros((1, 1))
@@ -218,6 +226,7 @@ class LSTM_Model():
             [state] = sess.run([self.final_state], feed_dict=feed_dict)
 
         out_sentence = prime_text
+        # 出来
         word = word_list[-1]
         for n in range(num):
             x = np.zeros((1, 1))
@@ -231,24 +240,24 @@ class LSTM_Model():
             out_sentence = out_sentence + ' ' + word
         return(out_sentence)
 
-# Define LSTM Model
+# 定义LSTM模型
 lstm_model = LSTM_Model(embedding_size, rnn_size, batch_size, learning_rate,
                         training_seq_len, vocab_size)
 
-# Tell TensorFlow we are reusing the scope for the testing
+# 重新使用之前的variable scope, 也就是变量的集合
 with tf.variable_scope(tf.get_variable_scope(), reuse=True):
     test_lstm_model = LSTM_Model(embedding_size, rnn_size, batch_size, learning_rate,
                                  training_seq_len, vocab_size, infer_sample=True)
 
 
-# Create model saver
+# 保存参数
 saver = tf.train.Saver(tf.global_variables())
 
-# Create batches for each epoch
+# 制作minibatch
 num_batches = int(len(s_text_ix)/(batch_size * training_seq_len)) + 1
-# Split up text indices into subarrays, of equal size
+# 按照batch的数量分割
 batches = np.array_split(s_text_ix, num_batches)
-# Reshape each split into [batch_size, training_seq_len]
+# 把
 batches = [np.resize(x, [batch_size, training_seq_len]) for x in batches]
 
 # Initialize all variables
