@@ -71,7 +71,9 @@ else:
 
 # 用制表符分开
 text_data = [x.split('\t') for x in text_data if len(x)>=1]
-# zip是压缩, zip(*)是解压缩 怎样理解这一句?
+# zip是压缩, zip(*)是解压缩 
+# zip() 函数用于将可迭代的对象作为参数，将对象中对应的元素打包成一个个元组，然后返回由这些元组组成的列表。
+# 如果各个迭代器的元素个数不一致，则返回列表长度与最短的对象相同，利用 * 号操作符，可以将元组解压为列表。
 [text_data_target, text_data_train] = [list(x) for x in zip(*text_data)]
 
 
