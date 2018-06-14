@@ -67,7 +67,7 @@ else:
     with open(os.path.join(data_dir, data_file), 'r') as file_conn:
         for row in file_conn:
             text_data.append(row)
-    text_data = text_data[:-1] # 切片到倒数第一个, 且不包含倒数第一个, 最后一个是标签
+    text_data = text_data[:-1] # 切片到倒数第一个, 且不包含倒数第一个
 
 # 用制表符分开
 text_data = [x.split('\t') for x in text_data if len(x)>=1]
@@ -199,7 +199,7 @@ for epoch in range(epochs):
     test_accuracy.append(temp_test_acc)
     print('Epoch: {}, Test Loss: {:.2}, Test Acc: {:.2}'.format(epoch+1, temp_test_loss, temp_test_acc))
     
-# 画两张图分别是train loss和test loss
+# 画图分别是train loss和test loss
 epoch_seq = np.arange(1, epochs+1)
 plt.plot(epoch_seq, train_loss, 'k--', label='Train Set')
 plt.plot(epoch_seq, test_loss, 'r-', label='Test Set')
@@ -209,7 +209,7 @@ plt.ylabel('Softmax Loss')
 plt.legend(loc='upper left')
 plt.show()
 
-# 画两张图分别是train accuracy和test accuracy
+# 画图分别是train accuracy和test accuracy
 plt.plot(epoch_seq, train_accuracy, 'k--', label='Train Set')
 plt.plot(epoch_seq, test_accuracy, 'r-', label='Test Set')
 plt.title('Test Accuracy')
